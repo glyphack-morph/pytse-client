@@ -2,9 +2,13 @@ import functools
 from typing import Dict, List, Optional
 
 import pandas as pd
-from bs4 import BeautifulSoup
-from pytse_client import config, symbols_data, tse_settings, utils
+from pytse_client import config, symbols_data, tse_settings
 from pytse_client.download import download_financial_indexes
+from pytse_client.tsetmc_api.index import (
+    IndexIntraday,
+    fetch_index_companies,
+    fetch_index_intraday,
+)
 from pytse_client.utils import persian
 
 
@@ -16,7 +20,10 @@ class FinancialIndex:
         base_path: Optional[str] = config.FINANCIAL_INDEX_BASE_PATH,
         write_history: Optional[bool] = False,
     ):
-        self._index: str = index or symbols_data.get_financial_index(symbol)
+        # names in indices_name.json use arabic letters (ي, ك)
+        self._index: str = index or symbols_data.get_financial_index(
+            persian.replace_persian(symbol)
+        )
         self.symbol: str = (
             persian.replace_persian(symbol) if index is None else self._index
         )
@@ -29,48 +36,32 @@ class FinancialIndex:
         self._write_history = write_history
 
     @property
-    def last_update(self):
-        # زمان انتشار
-        soup = self._financial_index_page_soup
-        before_update_time_td: BeautifulSoup = soup.find_all(
-            "td", text="زمان انتشار"
-        )[0]
-        update_time_td: BeautifulSoup = (
-            before_update_time_td.find_next_siblings("td")[0]
-        )
-        return pd.to_datetime(update_time_td.get_text()).strftime("%H:%M")
+    def last_update(self) -> str:
+        """
+        زمان انتشار, time of the last published value as HH:MM
+        """
+        return self._last_intraday_row.time.strftime("%H:%M")
 
     @property
-    def last_value(self):
-        # آخرین مقدار شاخص
-        soup = self._financial_index_page_soup
-        before_lastval_td: BeautifulSoup = soup.find_all(
-            "td", text="آخرین مقدار شاخص"
-        )[0]
-        lastval_td: BeautifulSoup = before_lastval_td.find_next_siblings("td")[
-            0
-        ]
-        return float(lastval_td.get_text().replace(",", ""))
+    def last_value(self) -> float:
+        """
+        آخرین مقدار شاخص
+        """
+        return self._last_intraday_row.value
 
     @property
-    def high(self):
-        # بیشترین مقدار روز
-        soup = self._financial_index_page_soup
-        before_high_td: BeautifulSoup = soup.find_all(
-            "td", text="بیشترین مقدار روز"
-        )[0]
-        high_td: BeautifulSoup = before_high_td.find_next_siblings("td")[0]
-        return high_td.get_text()
+    def high(self) -> float:
+        """
+        بیشترین مقدار روز
+        """
+        return self._last_intraday_row.high
 
     @property
-    def low(self):
-        # کمترین مقدار روز
-        soup = self._financial_index_page_soup
-        before_low_td: BeautifulSoup = soup.find_all(
-            "td", text="کمترین مقدار روز"
-        )[0]
-        low_td: BeautifulSoup = before_low_td.find_next_siblings("td")[0]
-        return low_td.get_text()
+    def low(self) -> float:
+        """
+        کمترین مقدار روز
+        """
+        return self._last_intraday_row.low
 
     @property
     @functools.lru_cache()
@@ -83,27 +74,16 @@ class FinancialIndex:
         )[self.symbol]
 
     def _get_contributing_symbols(self):
-        # شرکت های موجود در شاخص
-        soup = self._financial_index_page_soup
-        before_contr_symbols: BeautifulSoup = soup.find_all(
-            "div", text="شرکت های موجود در شاخص"
-        )[0]
-        contr_symbols: BeautifulSoup = before_contr_symbols.find_next_siblings(
-            "div"
-        )[0]
-        _index_symbols = list(
-            map(
-                lambda x: x.a["href"].split("i=")[1],
-                contr_symbols.find_all("td")[::9],
-            )
-        )
-        _symbols = list(
-            map(lambda x: x.get_text(), contr_symbols.find_all("td")[::9])
-        )
-        _contr_symbols = list(zip(_index_symbols, _symbols))
+        """
+        شرکت های موجود در شاخص
+        """
+        companies = fetch_index_companies(self._index).companies
         return [
-            {"symbol": _contr_symbol[1], "index": _contr_symbol[0]}
-            for _contr_symbol in _contr_symbols
+            {
+                "symbol": persian.replace_arabic(company.instrument.symbol),
+                "index": company.ins_code,
+            }
+            for company in companies
         ]
 
     @property
@@ -113,21 +93,23 @@ class FinancialIndex:
 
     @property
     def intraday_price(self) -> pd.DataFrame:
-        soup = self._financial_index_page_soup
-        before_intraday_price: BeautifulSoup = soup.find_all(
-            "div", text="سابقه شاخص روز جاری"
-        )[0]
-
-        intraday_price: BeautifulSoup = (
-            before_intraday_price.find_next_siblings("div")[0]
+        """
+        سابقه شاخص روز جاری, values of the index in the last trading day
+        columns: value, change_percentage, low, high, indexed by time
+        """
+        df = pd.DataFrame(
+            [
+                [
+                    row.time,
+                    row.value,
+                    row.change_percent,
+                    row.low,
+                    row.high,
+                ]
+                for row in self._intraday_rows
+            ],
+            columns=["time", "value", "change_percentage", "low", "high"],
         )
-        intraday_price_ls = list(
-            map(lambda bs: bs.get_text(), intraday_price.find_all("td"))
-        )
-        columns = ["time", "value", "change_percentage", "low", "high"]
-
-        rows = self._get_rows(intraday_price_ls, len(columns))
-        df = pd.DataFrame(rows, columns=columns)
         df = df.astype(
             {
                 "value": float,
@@ -137,44 +119,18 @@ class FinancialIndex:
             },
             errors="raise",
         )
-
-        df["time"] = pd.to_datetime(df["time"], format="%H:%M").dt.time
-        df.set_index("time", inplace=True)
-        return df
+        return df.set_index("time")
 
     @property
-    def _financial_index_page_soup(self):
-        return BeautifulSoup(self._financial_index_page_text, "html.parser")
+    def _intraday_rows(self) -> List[IndexIntraday]:
+        rows = fetch_index_intraday(self._index, timeout=30)
+        return sorted(rows, key=lambda row: row.time)
 
     @property
-    def _financial_index_page_text(self):
-        session = utils.requests_retry_session()
-        raw_html = session.get(self._intraday_url, timeout=10).text
-        session.close()
-        return raw_html
-
-    def _get_rows(self, intraday_price_ls, col_len):
-        """
-        intraday_price_ls: a table in financial index history page that
-        contains intraday information as string
-        col_len: number of table columns
-
-        in the result return from tsetmc negative values like -3
-        are represented as (3) here they are converted to normal representaion
-        """
-
-        # Remove separators in numbers: 3,000 -> 3000
-        intraday_price_ls = list(
-            map(lambda x: x.replace(",", ""), intraday_price_ls)
-        )
-        intraday_price_ls = list(
-            map(lambda x: x.replace("(", "-"), intraday_price_ls)
-        )
-        intraday_price_ls = list(
-            map(lambda x: x.replace(")", ""), intraday_price_ls)
-        )
-        rows = [
-            intraday_price_ls[i : i + col_len]
-            for i in range(0, len(intraday_price_ls), col_len)
-        ]
-        return rows
+    def _last_intraday_row(self) -> IndexIntraday:
+        rows = self._intraday_rows
+        if not rows:
+            raise RuntimeError(
+                f"no intraday data for financial index {self.symbol}"
+            )
+        return rows[-1]

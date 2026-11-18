@@ -1,21 +1,17 @@
-from dataclasses import dataclass
+"""Responses of the History page endpoints, defined in
+pytse_client.tsetmc_api; the old names are kept importable from here.
 
+ShareholderData is a row of Shareholder/{insCode}/{date}
+(tsetmc_api.shareholder.Shareholder), InstrumentHistoryResponse the answer
+of Instrument/GetInstrumentHistory/{insCode}/{date}
+(tsetmc_api.instrument.InstrumentHistory, total_shares and base_volume
+first like before).
+"""
 
-@dataclass
-class ShareholderData:
-    id: str
-    name: str
-    instrument_id: str  # it's cIsin key in response
-    shares: float
-    percentage: float
-    change: float
+from pytse_client.tsetmc_api.instrument import InstrumentHistory
+from pytse_client.tsetmc_api.shareholder import Shareholder
 
+__all__ = ["InstrumentHistoryResponse", "ShareholderData"]
 
-@dataclass
-class InstrumentHistoryResponse:
-    """
-    Represent the response coming from InstrumentHistory API
-    """
-
-    total_shares: int
-    base_volume: int
+ShareholderData = Shareholder
+InstrumentHistoryResponse = InstrumentHistory

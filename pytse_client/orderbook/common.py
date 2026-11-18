@@ -1,9 +1,12 @@
 import datetime
 import os
-import pandas as pd
 from pathlib import Path
-from pytse_client.ticker import Ticker
+from typing import List
+
+import pandas as pd
 from pytse_client.config import ORDER_BOOK_HIST_PATH
+from pytse_client.ticker import Ticker
+from pytse_client.tsetmc_api.best_limits import BestLimitHistory
 
 # maximum available depth in tsetmc for historical orderbook
 MAX_DEPTH = 5
@@ -19,6 +22,11 @@ ORDERBOOK_HEADER = {
 }
 
 
+# orderbook column -> key of a row of BestLimits/{insCode}/{date}
+# (TICKER_ORDER_BOOK). The rows are parsed by
+# tsetmc_api.best_limits.parse_best_limits_history and
+# best_limits_history_frame makes these columns from the parsed rows; the
+# keys give the order of the columns.
 api_to_orderbook_mapping = {
     "datetime": "hEven",
     "refID": "refID",
@@ -96,16 +104,38 @@ def process_diff_orderbook(df: pd.DataFrame):
         newdf.loc[idx, key_vals.keys()] = tuple(key_vals.values())
     # This will fill the missing values in each row with the last non-null
     # value in the same column.
-    return newdf.fillna(method="ffill")
+    return newdf.ffill()
+
+
+def best_limits_history_frame(rows: List[BestLimitHistory]) -> pd.DataFrame:
+    """
+    The changes of the order book on a day, one row per change, with the
+    columns of api_to_orderbook_mapping. datetime is the time of the change,
+    common_process adds the day. bid and ask are float64 like before.
+    """
+    return pd.DataFrame(
+        {
+            "datetime": [row.time for row in rows],
+            "refID": [row.ref_id for row in rows],
+            "depth": [row.level for row in rows],
+            "bid": [float(row.buy_price) for row in rows],
+            "ask": [float(row.sell_price) for row in rows],
+            "vol_bid": [row.buy_volume for row in rows],
+            "vol_ask": [row.sell_volume for row in rows],
+            "num_bid": [row.buy_count for row in rows],
+            "num_ask": [row.sell_count for row in rows],
+        },
+        columns=list(api_to_orderbook_mapping.keys()),
+    )
 
 
 def common_process(df: pd.DataFrame, date: str):
+    """date is the day as YYYYMMDD, df a best_limits_history_frame"""
     if len(df) == 0:
         return pd.DataFrame(columns=list(api_to_orderbook_mapping.keys()))
-    df.rename(columns=reversed_keys, inplace=True)
     df = df.loc[:, list(api_to_orderbook_mapping.keys())]
     df["datetime"] = pd.to_datetime(
-        date + " " + df["datetime"].astype(str), format="%Y%m%d %H%M%S"
+        date + " " + df["datetime"].astype(str), format="%Y%m%d %H:%M:%S"
     )
     df = df.sort_values(["datetime", "depth"], ascending=[True, True])
     df.set_index("datetime", inplace=True)

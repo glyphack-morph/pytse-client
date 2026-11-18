@@ -55,10 +55,22 @@
 
 ## نصب
 
+این پکیج به پایتون ۳.۱۱.۵ یا بالاتر نیاز دارد و روی نسخه‌های ۳.۱۱ تا ۳.۱۵ پایتون تست شده است.
+
 <div dir="ltr">
 
 ```bash
 pip install pytse-client
+```
+
+</div>
+
+یا اگر پروژه‌ی شما با [uv](https://docs.astral.sh/uv/) مدیریت می‌شود:
+
+<div dir="ltr">
+
+```bash
+uv add pytse-client
 ```
 
 </div>
@@ -71,9 +83,13 @@ pip install pytse-client
 
 ```bash
 pip install git+https://github.com/Glyphack/pytse-client.git
+# or, with uv:
+uv add git+https://github.com/Glyphack/pytse-client.git
 ```
 
 </div>
+
+برای راه‌اندازی محیط توسعه (با mise و uv) [راهنمای مشارکت](https://github.com/Glyphack/pytse-client/blob/master/CONTRIBUTING.md#نصب-محیط-توسعه) را ببینید.
 
 ## نحوه استفاده
 
@@ -141,8 +157,8 @@ tse.download(symbols=["وبملت", "ولملت"], write_to_csv=True)
 ### دانلود سابقه شاخص های مالی
 
 <div style="line-height:80px;">
-برای دانلود سابقه شاخص های بازار که از طریق این <a href="http://www.tsetmc.com/Loader.aspx?Partree=151315&Flow=1">  لینک </a>
-می توانید لیست نام آن ها را ملاحظه کنید کافی است اسم شاخص
+برای دانلود سابقه شاخص های بازار که لیست نام آن ها را می توانید در <a href="https://www.tsetmc.com/">صفحه اول سایت بورس</a>
+(کلیک روی عنوان «شاخص های منتخب» در کادر «بورس اوراق بهادار تهران» یا «فرابورس ایران») ملاحظه کنید کافی است اسم شاخص
 در بخش ‍‍
 `symbols`
 وارد کنید.
@@ -178,6 +194,8 @@ tse.FinancialIndex(symbol="شاخص کل").high
 tse.FinancialIndex(symbol="شاخص کل").last_value
 tse.FinancialIndex(symbol="شاخص کل").last_update
 ```
+
+سایت جدید بورس برای سابقه شاخص ها فقط مقدار پایانی، کمترین و بیشترین مقدار هر روز را می‌دهد، برای همین ستون های `open` و `volume` دیگر در خروجی `history` نیستند و ستون ها `date, high, low, close` (و `jdate`) هستند.
 
 </div>
 <div>
@@ -320,7 +338,7 @@ print(ticker.client_types)  # حقیقی حقوقی
 print(ticker.title)  # نام شرکت
 پتروشيمي نوري (نوري)
 print(ticker.url)  # آدرس صفحه سهم
-http://tsetmc.com/Loader.aspx?ParTree=151311&i=19040514831923530
+https://www.tsetmc.com/instInfo/19040514831923530
 print(ticker.group_name)  # نام گروه
 محصولات شيميايي
 print(ticker.fiscal_year)  # سال مالی
@@ -429,7 +447,7 @@ ticker = tse.Ticker(symbol="بركت", adjust=True)
 
 تعدادی از نماد‌ها توی سایت به شکل حذف شده هستند. برای گرفتن دیتای این نماد‌ها از ماژول تیکر استفاده کنید.
 برای مثال جهت دسترسی به دیتای نماد حذف شده خصدرا، اندیس آن را از آدرس نماد در سایت بورس بگیرید
-http://www.tsetmc.com/Loader.aspx?ParTree=151311&i=25165947991415904
+https://www.tsetmc.com/instInfo/25165947991415904
 
 <div dir="ltr">
 
@@ -441,11 +459,11 @@ ticker = tse.Ticker("", index="25165947991415904")
 
 </div>
 
-مقدار ‍`index` را با مقدار جلوی `i=` جایگزین میکنیم.
+مقدار ‍`index` را با عدد انتهای آدرس صفحه نماد (بعد از `instInfo/`) جایگزین میکنیم.
 
 #### اطلاعات حقیقی و حقوقی
 
-اطلاعات خرید و فروش حقیقی و حقوقی سهام رو میشه از طریق `ticker.client_types` گرفت این اطلاعات یه DataFrame شامل اطلاعات موجود در تب حقیقی حقوقی(تب بنفشی که در این [صفحه](http://www.tsetmc.com/Loader.aspx?ParTree=151311&i=778253364357513) هست) سهم هست:
+اطلاعات خرید و فروش حقیقی و حقوقی سهام رو میشه از طریق `ticker.client_types` گرفت این اطلاعات یه DataFrame شامل اطلاعات موجود در تب حقیقی حقوقی(تب «حقیقی-حقوقی» در این [صفحه](https://www.tsetmc.com/instInfo/778253364357513)) سهم هست:
 
 <div dir="ltr">
 
@@ -470,8 +488,8 @@ individual_ownership_change : تغییر مالکیت حقوقی به حقیقی
 
 #### سهامداران عمده
 
-سهام‌داران عمده اطلاعات داخل این [صفحه](http://tsetmc.com/Loader.aspx?Partree=15131T&c=IRO1BMLT0007) هست.
-این اطلاعات رو میشه با `shareholders` گرفت که یک DataFrame هست.
+سهام‌داران عمده اطلاعات داخل تب «سهامداران» این [صفحه](https://www.tsetmc.com/instInfo/778253364357513) هست.
+این اطلاعات رو میشه با `shareholders` گرفت که یک DataFrame با ستون‌های `id, shareholder, shares, percentage, change` هست.
 
 <div dir="ltr">
 
@@ -566,7 +584,7 @@ await ticker.get_shareholders_history_async(
 <div dir="ltr">
 
 ```
-Retrying pytse_client.ticker.ticker.Ticker._get_ticker_daily_info_page_response in 1.3127419515957892 seconds as it raised ClientResponseError: 500, message='Internal Server Error', url=URL('http://cdn.tsetmc.com/Loader.aspx?ParTree=15131P&i=56574323121551263&d=20210220').
+Retrying pytse_client.proxy.tsetmc.get_day_shareholders_history in 3.4 seconds as it raised ClientResponseError: 500, message='Internal Server Error', url=URL('https://cdn.tsetmc.com/api/Shareholder/56574323121551263/20210220').
 ```
 
 </div>
@@ -754,8 +772,10 @@ print(trade_details)
 ```sh
 "index", "code", "symbol", "name", "last_changed", "open_price",
 "adj_closing_price", "last_price", "number_of_trans",
-"volume_of_trans", "value_of_trans", "min_price", "max_year",
-"yesterday_price", "EPS", "base_volume", "group_number", "max_price_allowed", "min_price_allowed", "number_of_stocks"
+"volume_of_trans", "value_of_trans", "min_price", "max_price",
+"yesterday_price", "EPS", "base_volume", "visit_count", "flow",
+"group_number", "max_price_allowed", "min_price_allowed",
+"number_of_stocks", "yval"
 ```
 
 در واقع از دیده بان بازار دیتاهای زیر قابل دریافت بود که به عنوان نمونه قرار میدهم ولی برخی از دیتاها برای توسعه دهندگان پکیج قابل فهم نبود(آنهایی که با `?` در زیر مشخص شده اند) که در صورت علاقه مندی میتوانید با اطلاع رسانی کاربرد آن ها به ما در توسعه پکیج کمک کنید.

@@ -1,6 +1,7 @@
 """
 access properties of Ticker for all symbols
 """
+
 import datetime
 import logging
 import random
@@ -21,7 +22,15 @@ if __name__ == "__main__":
         try:
             ticker = Ticker(symbol)
             ticker.title
+            ticker.fulltitle
             ticker.url
+            ticker.instrument_id
+            ticker.ci_sin
+            ticker.fiscal_year
+            ticker.psr
+            ticker.p_s_ratio
+            ticker.nav
+            ticker.client_types
             ticker.group_name
             ticker.eps
             ticker.p_e_ratio

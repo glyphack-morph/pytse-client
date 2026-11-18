@@ -1,0 +1,33 @@
+# Installs the locked dependencies and runs the tests that do not call the
+# TSETMC servers on every supported Python version. The full test suite
+# (unit_test.yml) is disabled because it calls the live servers.
+name: Python versions
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every Python version that still gets updates.
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Set up uv (version from mise.toml)
+      uses: jdx/mise-action@v5
+    - name: Install dependencies
+      run: uv sync --locked
+    - name: Run offline tests
+      run: make offline_test

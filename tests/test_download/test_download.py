@@ -3,7 +3,13 @@ import unittest
 from os.path import exists
 from pathlib import Path
 
-from pytse_client import download, download_client_types_records
+import pandas as pd
+from pytse_client import (
+    download,
+    download_client_types_records,
+    download_financial_indexes,
+)
+from pytse_client.download import get_symbol_id
 
 
 class TestDownloadSymbolHistory(unittest.TestCase):
@@ -27,6 +33,27 @@ class TestDownloadSymbolHistory(unittest.TestCase):
             exists(Path(f"{self.write_csv_path}/{self.valid_symbol}.csv"))
         )
         self.assertFalse(symbol_record.empty)
+        # api: ClosingPrice/GetClosingPriceDailyList
+        self.assertEqual(
+            list(symbol_record.columns),
+            [
+                "date",
+                "open",
+                "high",
+                "low",
+                "adjClose",
+                "value",
+                "volume",
+                "count",
+                "yesterday",
+                "close",
+            ],
+        )
+        self.assertTrue(symbol_record["date"].is_monotonic_increasing)
+        # the whole history is downloaded, فولاد was listed in 2007
+        self.assertLess(
+            symbol_record["date"].iloc[0], pd.Timestamp("2008-01-01")
+        )
 
     def test_download_multiple_symbols(self):
         symbols_records = download(
@@ -74,6 +101,41 @@ class TestDownloadClientTypes(unittest.TestCase):
                 exists(Path(f"{self.write_csv_path}/{symbol}.csv"))
             )
             self.assertFalse(symbol_record.empty)
+
+
+class TestDownloadAdjustedHistory(unittest.TestCase):
+    def test_download_adjusted_history(self):
+        symbol = "فولاد"
+        adjusted = download(symbols=symbol, adjust=True)[symbol]
+        not_adjusted = download(symbols=symbol)[symbol]
+        self.assertEqual(len(adjusted), len(not_adjusted))
+        # the last day is never changed by the adjustment
+        self.assertEqual(
+            adjusted["adjClose"].iloc[-1], not_adjusted["adjClose"].iloc[-1]
+        )
+        # فولاد had capital increases, so old prices are adjusted
+        self.assertLess(
+            adjusted["adjClose"].iloc[0], not_adjusted["adjClose"].iloc[0]
+        )
+
+
+class TestDownloadFinancialIndex(unittest.TestCase):
+    def test_download_financial_index(self):
+        # api: Index/GetIndexB2History
+        [records] = download_financial_indexes(
+            "شاخص کل", include_jdate=True
+        ).values()
+        self.assertEqual(
+            list(records.columns), ["date", "high", "low", "close", "jdate"]
+        )
+        self.assertGreater(len(records), 1000)
+        self.assertTrue(records["date"].is_monotonic_increasing)
+
+
+class TestGetSymbolId(unittest.TestCase):
+    def test_get_symbol_id(self):
+        # api: Instrument/GetInstrumentSearch
+        self.assertEqual(get_symbol_id("فولاد"), "46348559193224090")
 
 
 def suite():

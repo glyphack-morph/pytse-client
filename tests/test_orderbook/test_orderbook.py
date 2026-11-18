@@ -91,7 +91,9 @@ class TestOrderBook(unittest.TestCase):
             )
 
     def test_long_processed(self):
-        number_valid_dates = 29
+        # 28 trade days, the daily history of the new tsetmc api has no
+        # record for 2023-03-27 (the old export file had 29 days)
+        number_valid_dates = 28
         symbol = "زر"
         ticker = Ticker(symbol)
         start_date = date(2023, 3, 1)

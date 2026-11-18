@@ -1,23 +1,26 @@
-import json
 import datetime
+import json
 import logging
 import multiprocessing
-import pandas as pd
 from typing import Dict, List, Optional
-from pytse_client.ticker.ticker import Ticker
-from pytse_client.tse_settings import TICKER_ORDER_BOOK
-from pytse_client.utils.request_session import requests_retry_session
+
+import pandas as pd
 from pytse_client.config import LOGGER_NAME
-from pytse_client.orderbook.order_book_async import get_df_valid_dates
-from pytse_client.utils.logging_generator import get_logger
 from pytse_client.orderbook.common import (
     ORDERBOOK_HEADER,
-    process_diff_orderbook,
+    best_limits_history_frame,
     common_process,
-    validate_dates,
     get_valid_dates,
+    process_diff_orderbook,
+    validate_dates,
     write_to_csv,
 )
+from pytse_client.orderbook.order_book_async import get_df_valid_dates
+from pytse_client.ticker.ticker import Ticker
+from pytse_client.tse_settings import TICKER_ORDER_BOOK
+from pytse_client.tsetmc_api.best_limits import parse_best_limits_history
+from pytse_client.utils.logging_generator import get_logger
+from pytse_client.utils.request_session import requests_retry_session
 
 logger = get_logger(f"{LOGGER_NAME}_orderbook", logging.INFO)
 
@@ -103,9 +106,12 @@ def _get_diff_orderbook(ticker: Ticker, date_obj: datetime.date):
     session = requests_retry_session(retries=5, backoff_factor=0.2)
     url = TICKER_ORDER_BOOK.format(index=index, date=date)
 
-    response = session.get(url, headers=ORDERBOOK_HEADER, timeout=10)
+    try:
+        response = session.get(url, headers=ORDERBOOK_HEADER, timeout=10)
+        response.raise_for_status()
+    finally:
+        session.close()
     logger.info(f"successfully download raw orderbook on {date_obj} from tse")
     data = json.loads(response.content)
-    session.close()
 
-    return pd.json_normalize(data["bestLimitsHistory"])
+    return best_limits_history_frame(parse_best_limits_history(data))

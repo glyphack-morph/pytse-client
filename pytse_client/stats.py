@@ -1,10 +1,9 @@
 import os
-import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List
 
 import pandas as pd
-from pytse_client import config, tse_settings, utils
+from pytse_client import config, utils
 from pytse_client.ticker_statisticals import (
     filter_key_value,
     filter_value_NONE,
@@ -13,26 +12,38 @@ from pytse_client.ticker_statisticals.utils import (
     get_keys_of_client_types,
     get_keys_of_market_watch,
 )
+from pytse_client.tsetmc_api._convert import to_heven
+from pytse_client.tsetmc_api.client_type import (
+    ClientType,
+    fetch_client_type_all,
+)
+from pytse_client.tsetmc_api.market import (
+    InstrumentStatistic,
+    MarketWatchInstrument,
+    fetch_key_stats,
+    fetch_market_watch,
+)
 from pytse_client.utils import map_index_to_symbols
 
 
-def _get_list_of_processed_stats(
-    raw_key_stats: str,
-) -> Tuple[List[str], List[str]]:
-    # group 1 is idx, group 2 is key, group 3 is value
-    proccessed_key_stats = re.sub(
-        r"([0-9]+)\,([0-9]+)\,([0-9\.]+)\;",
-        "@\\g<1>@\\g<2>,\\g<3>;",
-        raw_key_stats,
-    )
-    list_of_key_stats = proccessed_key_stats.split("@")[1:]
-    indices = list_of_key_stats[0::2]
-    values = list_of_key_stats[1::2]
+def _get_dict_of_key_stats(
+    key_stats_rows: List[InstrumentStatistic],
+) -> Dict[str, Dict]:
+    """
+    output: {index: {key stat name: value}}, see
+    ticker_statisticals/key_stats.py for the names of the stats
+    """
+    key_stats: Dict[str, Dict] = {}
+    for row in key_stats_rows:
+        key_name = filter_key_value.get(row.stat_id)
+        # skip statistics this package does not know about
+        if key_name is None:
+            continue
+        key_stats.setdefault(row.ins_code, {})[key_name] = row.value
+    return key_stats
 
-    return indices, values
 
-
-def _get_dict_of_client_types(raw_client_types: str):
+def _get_dict_of_client_types(client_types: List[ClientType]):
     """
     output: Dictionary of client types with the following keys:
         "index", "numof_individual_buy", "numof_corporate_buy",
@@ -40,70 +51,91 @@ def _get_dict_of_client_types(raw_client_types: str):
         "numof_individual_sell", "numof_corporate_sell",
         "vol_individual_sell", "vol_corporate_sell"
     """
-    client_types_keys = get_keys_of_client_types()
-    final_client_types = {}
-    for each_client_type in raw_client_types.split(";"):
-        key_val = list(zip(client_types_keys, each_client_type.split(",")))
-        key_val_dict = dict(key_val)
-        final_client_types[key_val_dict["index"]] = key_val_dict
-    return final_client_types
+    # volumes are floats like the api sends them, see get_stats
+    return {
+        row.ins_code: {
+            "index": row.ins_code,
+            "numof_individual_buy": row.individual_buy_count,
+            "numof_corporate_buy": row.corporate_buy_count,
+            "vol_individual_buy": float(row.individual_buy_volume),
+            "vol_corporate_buy": float(row.corporate_buy_volume),
+            "numof_individual_sell": row.individual_sell_count,
+            "numof_corporate_sell": row.corporate_sell_count,
+            "vol_individual_sell": float(row.individual_sell_volume),
+            "vol_corporate_sell": float(row.corporate_sell_volume),
+        }
+        for row in client_types
+    }
 
 
-def _get_dict_of_market_watch(raw_market_watch: str):
+def _get_dict_of_market_watch(market_watch: List[MarketWatchInstrument]):
     """
     output: Dictionary of market watch with the following keys:
         "index", "code", "symbol", "name", "last_changed", "open_price",
         "adj_closing_price", "last_price", "number_of_trans",
-        "volume_of_trans", "value_of_trans", "min_price", "max_year",
-        "yesterday_price", "EPS", "base_volume", "NOT_VALID_KEY",
-        "NOT_VALID_KEY", "group_number", "max_price_allowed",
-        "min_price_allowed", "number_of_stocks", "NOT_VALID_KEY"
+        "volume_of_trans", "value_of_trans", "min_price", "max_price",
+        "yesterday_price", "EPS", "base_volume", "visit_count", "flow",
+        "group_number", "max_price_allowed", "min_price_allowed",
+        "number_of_stocks", "yval"
     """
-    try:
-        _market_watch = raw_market_watch.split("@")[2]
-    except IndexError:
-        print("Failed to get market watch stats")
-        return {}
+    # numbers keep the type the api sends them with (float, or int for
+    # last_changed, visit_count, flow, min_price_allowed and yval): the
+    # dtypes of the get_stats columns follow them
+    return {
+        row.ins_code: {
+            "index": row.ins_code,
+            "code": _strip(row.isin),
+            "symbol": _strip(row.symbol),
+            "name": _strip(row.name),
+            "last_changed": to_heven(row.time),
+            "open_price": float(row.first_price),
+            "adj_closing_price": float(row.closing_price),
+            "last_price": float(row.last_price),
+            "number_of_trans": float(row.trade_count),
+            "volume_of_trans": float(row.volume),
+            "value_of_trans": float(row.value),
+            "min_price": float(row.low_price),
+            "max_price": float(row.high_price),
+            "yesterday_price": float(row.yesterday_price),
+            "EPS": row.eps,
+            "base_volume": float(row.base_volume),
+            "visit_count": row.visit_count,
+            "flow": row.flow,
+            "group_number": _strip(row.sector_code),
+            "max_price_allowed": float(row.max_allowed_price),
+            "min_price_allowed": row.min_allowed_price,
+            "number_of_stocks": float(row.total_shares),
+            "yval": row.instrument_type,
+        }
+        for row in market_watch
+    }
 
-    market_watch_keys = get_keys_of_market_watch()
-    final_market_watch = {}
-    for each_market_watch in _market_watch.split(";"):
-        key_val = list(zip(market_watch_keys, each_market_watch.split(",")))
-        key_val_dict = dict(key_val)
-        final_market_watch[key_val_dict["index"]] = key_val_dict
-    return final_market_watch
+
+def _strip(text):
+    return text.strip() if isinstance(text, str) else text
 
 
 def get_stats(base_path=None, to_csv=False) -> pd.DataFrame:
     aggregated_key_stats = {}
     index_to_symbol_map = map_index_to_symbols()
     session = utils.requests_retry_session()
+    try:
+        key_stats_dict = _get_dict_of_key_stats(_get_key_stats(session))
+        client_types_dict = _get_dict_of_client_types(
+            _get_client_types(session)
+        )
+        market_watch_dict = _get_dict_of_market_watch(
+            _get_market_watch(session)
+        )
+    finally:
+        session.close()
 
-    raw_key_stats = _get_key_stats(session).text
-    indices, values = _get_list_of_processed_stats(raw_key_stats)
-
-    raw_client_types = _get_client_types(session).text
-    client_types_dict = _get_dict_of_client_types(raw_client_types)
-
-    raw_market_watch = _get_market_watch(session).text
-    market_watch_dict = _get_dict_of_market_watch(raw_market_watch)
-
-    linked_stats = zip(indices, values)
-    for idx_stat, val_stat in linked_stats:
+    for idx_stat, filter_key_found in key_stats_dict.items():
         if idx_stat not in index_to_symbol_map:
             continue
         else:
             symbol = index_to_symbol_map[idx_stat]["symbol"]
             name = index_to_symbol_map[idx_stat]["name"]
-        filter_key_found = {}
-        segmented_val_stat = re.split(r"\;", val_stat)
-        segmented_val_stat = list(
-            filter(lambda x: x != "", segmented_val_stat)
-        )
-
-        for each_segment in segmented_val_stat:
-            key, val = each_segment.split(",")
-            filter_key_found[filter_key_value[int(key)]] = val
 
         client_types = client_types_dict.get(
             idx_stat, {key: None for key in get_keys_of_client_types()}
@@ -137,7 +169,7 @@ def get_stats(base_path=None, to_csv=False) -> pd.DataFrame:
         numeric_cols_ls
     ].apply(pd.to_numeric, errors="coerce")
     aggregated_key_stats_df["index"] = aggregated_key_stats_df.index
-    aggregated_key_stats_df.reset_index(drop=True, inplace=True)
+    aggregated_key_stats_df = aggregated_key_stats_df.reset_index(drop=True)
 
     if to_csv:
         base_path = config.STATS_BASE_PATH if base_path is None else base_path
@@ -149,31 +181,22 @@ def get_stats(base_path=None, to_csv=False) -> pd.DataFrame:
     return aggregated_key_stats_df
 
 
-def _get_key_stats(session):
+def _get_key_stats(session) -> List[InstrumentStatistic]:
     try:
-        response = session.get(tse_settings.KEY_STATS_URL)
+        return fetch_key_stats(session=session, timeout=180)
     except Exception as e:
         raise Exception(f"Failed to get key stats: {e}")
-    finally:
-        session.close()
-    return response
 
 
-def _get_client_types(session):
+def _get_client_types(session) -> List[ClientType]:
     try:
-        response = session.get(tse_settings.CLIENT_TYPES_URL)
+        return fetch_client_type_all(session=session, timeout=120)
     except Exception as e:
         raise Exception(f"Failed to get client types: {e}")
-    finally:
-        session.close()
-    return response
 
 
-def _get_market_watch(session):
+def _get_market_watch(session) -> List[MarketWatchInstrument]:
     try:
-        response = session.get(tse_settings.MARKET_WATCH_URL)
+        return fetch_market_watch(session=session, timeout=120)
     except Exception as e:
         raise Exception(f"Failed to get market watch: {e}")
-    finally:
-        session.close()
-    return response

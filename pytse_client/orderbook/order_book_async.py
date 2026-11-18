@@ -1,12 +1,16 @@
 import asyncio
-import aiohttp
-import logging
 import datetime
-import pandas as pd
+import logging
+
+import aiohttp
 from pytse_client.config import LOGGER_NAME
+from pytse_client.orderbook.common import (
+    ORDERBOOK_HEADER,
+    best_limits_history_frame,
+)
 from pytse_client.ticker import Ticker
 from pytse_client.tse_settings import TICKER_ORDER_BOOK
-from pytse_client.orderbook.common import ORDERBOOK_HEADER
+from pytse_client.tsetmc_api.best_limits import parse_best_limits_history
 from pytse_client.utils.logging_generator import get_logger
 
 logger = get_logger(f"{LOGGER_NAME}_orderbook_async", logging.INFO)
@@ -51,4 +55,7 @@ async def _get_diff_orderbook(
             f"successfully async download raw orderbook on {date} from tse"
         )
         data = await response.json()
-        return [date_obj, pd.json_normalize(data["bestLimitsHistory"])]
+        return [
+            date_obj,
+            best_limits_history_frame(parse_best_limits_history(data)),
+        ]

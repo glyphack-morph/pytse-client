@@ -4,16 +4,28 @@ from os.path import exists
 from pathlib import Path
 from datetime import date
 from parameterized import parameterized
-from pytse_client import get_trade_details
+from pytse_client import Ticker, get_trade_details
 from pytse_client.historical_intraday.trade_details import (
     valid_time_frames_mapping,
 )
 
 
+class TestTradeDetailsTotals(unittest.TestCase):
+    def test_trade_details_match_daily_totals(self):
+        # on 2026-11-16 the api returns 223 trades of فولاد twice
+        day = date(2026, 11, 16)
+        trades = get_trade_details(symbol_name="فولاد", start_date=day)[day]
+        history = Ticker("فولاد").history
+        totals = history[history["date"].dt.date == day].iloc[0]
+        self.assertEqual(len(trades), totals["count"])
+        self.assertEqual(trades["volume"].sum(), totals["volume"])
+
+
 class TestTradeDetails(unittest.TestCase):
+    # number of trades on 2023-02-27, same as تعداد معاملات of that day
     params = [
-        ("خودرو", (6374, 2)),
-        ("وغدیر", (1915, 2)),
+        ("خودرو", (36319, 2)),
+        ("وغدیر", (3756, 2)),
     ]
     single_ticker = "اهرم"
     valid_timeframes = [
@@ -59,5 +71,4 @@ class TestTradeDetails(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestOrderBook)
-    unittest.TextTestRunner(verbosity=3).run(suite)
+    unittest.main(verbosity=3)

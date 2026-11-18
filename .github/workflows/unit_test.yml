@@ -1,3 +1,5 @@
+# Disabled: the tests call the live TSETMC servers.
+#
 # name: Unit Test
 #
 # on:
@@ -6,22 +8,21 @@
 #   pull_request:
 #
 # jobs:
-#  unit-test:
+#   unit-test:
 #     runs-on: ubuntu-latest
 #     strategy:
 #       fail-fast: false
 #       matrix:
-#         python-version: ["3.7"]
+#         # Every Python version that still gets updates.
+#         python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+#     env:
+#       UV_PYTHON: ${{ matrix.python-version }}
 #     steps:
-#     - uses: actions/checkout@v3
-#     - name: Set up Python
-#       uses: actions/setup-python@v4
-#       with:
-#         python-version: '3.x'
+#     - uses: actions/checkout@v7
+#     - name: Set up Python and uv (versions from mise.toml)
+#       uses: jdx/mise-action@v5
 #     - name: Install dependencies
-#       run: |
-#         pip install poetry
-#         poetry install
+#       run: uv sync --locked
 #
 #     - name: Run unit tests
 #       run: make unit_test

@@ -1,16 +1,22 @@
-import datetime
-import os
-import logging
-import pandas as pd
 import asyncio
-import aiohttp
+import datetime
+import logging
+import os
 from pathlib import Path
-from typing import Dict, Optional, Union
-from pytse_client.tse_settings import TICKER_TRADE_DETAILS
-from pytse_client.utils.trade_dates import get_valid_dates
-from pytse_client.ticker.ticker import Ticker
+from typing import Dict, List, Optional, Union
+
+import aiohttp
+import pandas as pd
 from pytse_client.config import LOGGER_NAME, TRADE_DETAILS_HIST_PATH
+from pytse_client.ticker.ticker import Ticker
+from pytse_client.tse_settings import TICKER_TRADE_DETAILS
+from pytse_client.tsetmc_api.trade import (
+    Trade,
+    parse_trade_history,
+    unique_trades,
+)
 from pytse_client.utils.logging_generator import get_logger
+from pytse_client.utils.trade_dates import get_valid_dates
 
 logger = get_logger(f"{LOGGER_NAME}_trade_details", logging.INFO)
 ERROR_MSG = "{date} is not a valid trade day. Make sure it is a trade day."
@@ -24,15 +30,19 @@ TRADE_DETAILS_HEADER = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
     "Accept-Encoding": "gzip, deflate",
 }
+# key of a row of Trade/GetTradeHistory (TICKER_TRADE_DETAILS) -> column.
+# The rows are parsed by tsetmc_api.trade.parse_trade_history and
+# _trades_frame makes these columns from the parsed rows; the values give
+# the order of the columns.
 mapping_api_col = {"pTran": "price", "qTitTran": "volume", "hEven": "datetime"}
 valid_time_frames_mapping = {
-    "30s": "30S",
-    "1m": "1T",
-    "5m": "5T",
-    "10m": "10T",
-    "15m": "15T",
-    "30m": "30T",
-    "1h": "1H",
+    "30s": "30s",
+    "1m": "1min",
+    "5m": "5min",
+    "10m": "10min",
+    "15m": "15min",
+    "30m": "30min",
+    "1h": "1h",
 }
 reversed_keys = {val: key for key, val in mapping_api_col.items()}
 
@@ -104,13 +114,29 @@ def write_to_csv(
     df.to_csv(path)
 
 
+def _trades_frame(trades: List[Trade]) -> pd.DataFrame:
+    """
+    The trades of a day with the columns of mapping_api_col: price (float64
+    like before), volume and datetime, the time of the trade (common_process
+    adds the day).
+    """
+    return pd.DataFrame(
+        {
+            "price": [float(trade.price) for trade in trades],
+            "volume": [trade.volume for trade in trades],
+            "datetime": [trade.time for trade in trades],
+        },
+        columns=list(mapping_api_col.values()),
+    )
+
+
 def common_process(df: pd.DataFrame, date: str):
+    """date is the day as YYYYMMDD, df a _trades_frame"""
     if len(df) == 0:
         return pd.DataFrame(columns=list(mapping_api_col.values()))
-    df.rename(columns=mapping_api_col, inplace=True)
     df = df.loc[:, list(mapping_api_col.values())]
     df["datetime"] = pd.to_datetime(
-        date + " " + df["datetime"].astype(str), format="%Y%m%d %H%M%S"
+        date + " " + df["datetime"].astype(str), format="%Y%m%d %H:%M:%S"
     )
     df = df.sort_values(["datetime"], ascending=[True])
     df.set_index("datetime", inplace=True)
@@ -164,7 +190,10 @@ async def _get_trade_details(ticker: Ticker, date_obj: datetime.date, session):
                     logger.info(
                         f"Successfully fetched trade details on {date_obj} from tse"
                     )
-                    return [date_obj, pd.json_normalize(data["tradeHistory"])]
+                    # canceled trades are not part of the day's trades, and
+                    # the api sometimes returns a trade twice
+                    trades = unique_trades(parse_trade_history(data))
+                    return [date_obj, _trades_frame(trades)]
         except (aiohttp.ClientError, asyncio.TimeoutError):
             logger.error(f"Request failed for {date_obj}. Retrying...")
             retry_count += 1

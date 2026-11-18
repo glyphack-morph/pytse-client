@@ -1,0 +1,10 @@
+# Tools needed to work on pytse-client. Install them with `mise install`,
+# then set up the virtualenv with `uv sync`.
+[tools]
+python = "3.15.2"
+uv = "0.13.8"
+
+[env]
+# Let uv prefer the Python pinned above (on PATH through mise) over any
+# uv-managed interpreter that may be installed on the machine.
+UV_PYTHON_PREFERENCE = "system"
