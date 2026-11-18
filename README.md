@@ -2,7 +2,7 @@
 
 # دریافت اطلاعات بازار بورس تهران
 
-[![Test](https://github.com/Glyphack/pytse-client/actions/workflows/unit_test.yml/badge.svg)](https://github.com/Glyphack/pytse-client/actions/workflows/unit_test.yml)
+[![Test](https://github.com/Glyphack/pytse-client/actions/workflows/python_versions.yml/badge.svg)](https://github.com/Glyphack/pytse-client/actions/workflows/python_versions.yml)
 [![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/Glyphack/pytse-client.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Glyphack/pytse-client/context:python)
 [![Discord Chat](https://img.shields.io/discord/730808323808559106?label=discord)](https://discord.gg/ampPDKHpVv)
 

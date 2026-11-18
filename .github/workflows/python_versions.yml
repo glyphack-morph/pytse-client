@@ -1,12 +1,13 @@
 # Installs the locked dependencies and runs the tests that do not call the
-# TSETMC servers on every supported Python version. The full test suite
-# (unit_test.yml) is disabled because it calls the live servers.
+# TSETMC servers on every supported Python version, on every push and pull
+# request. The full test suite calls the live servers, it is started by
+# hand (unit_test.yml).
 name: Python versions
 
 on:
   push:
-    branches: [ master ]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
